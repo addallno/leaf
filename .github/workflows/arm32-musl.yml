@@ -1,5 +1,5 @@
-# 交叉编译 arm32（armv7）静态 musl 二进制，可直接跑在 proot Ubuntu / Termux
-name: ARM32 Musl Static
+# 交叉编译 arm32 / arm64 静态 musl 二进制，可直接跑在 proot Ubuntu / Termux
+name: ARM Musl Static
 
 on:
   workflow_dispatch:
@@ -13,8 +13,16 @@ permissions:
 
 jobs:
   build:
-    name: armv7 musl 静态构建
+    name: ${{ matrix.artifact }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: armv7-unknown-linux-musleabihf
+            artifact: leaf-armv7-musl-static
+          - target: aarch64-unknown-linux-musl
+            artifact: leaf-arm64-musl-static
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -22,7 +30,7 @@ jobs:
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: armv7-unknown-linux-musleabihf
+          targets: ${{ matrix.target }}
 
       - name: Install cross
         uses: taiki-e/install-action@v2
@@ -33,23 +41,22 @@ jobs:
         # strip=symbols 让 rustc 直接去掉符号表，无需额外 strip 工具
         env:
           CARGO_PROFILE_RELEASE_STRIP: symbols
-        run: cross build --release --locked --target armv7-unknown-linux-musleabihf
+        run: cross build --release --locked --target ${{ matrix.target }}
 
       - name: Verify artifact
         run: |
-          BIN=target/armv7-unknown-linux-musleabihf/release/leaf
+          BIN=target/${{ matrix.target }}/release/leaf
           file "$BIN"
           readelf -h "$BIN" | grep -E "Class|Machine|Type"
-          readelf -d "$BIN" > /dev/null 2>&1 && echo "存在动态段（非纯静态）" || echo "无动态段，纯静态"
           ls -lh "$BIN"
 
       - name: Stage artifact
         run: |
           mkdir -p dist
-          cp target/armv7-unknown-linux-musleabihf/release/leaf dist/leaf-armv7-musl-static
+          cp target/${{ matrix.target }}/release/leaf dist/${{ matrix.artifact }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: leaf-armv7-musl-static
-          path: dist/leaf-armv7-musl-static
+          name: ${{ matrix.artifact }}
+          path: dist/${{ matrix.artifact }}
