@@ -1,0 +1,55 @@
+# 交叉编译 arm32（armv7）静态 musl 二进制，可直接跑在 proot Ubuntu / Termux
+name: ARM32 Musl Static
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [arm32-musl-build]
+    paths:
+      - ".github/workflows/arm32-musl.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: armv7 musl 静态构建
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: armv7-unknown-linux-musleabihf
+
+      - name: Install cross
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cross
+
+      - name: Build static release
+        # strip=symbols 让 rustc 直接去掉符号表，无需额外 strip 工具
+        env:
+          CARGO_PROFILE_RELEASE_STRIP: symbols
+        run: cross build --release --locked --target armv7-unknown-linux-musleabihf
+
+      - name: Verify artifact
+        run: |
+          BIN=target/armv7-unknown-linux-musleabihf/release/leaf
+          file "$BIN"
+          readelf -h "$BIN" | grep -E "Class|Machine|Type"
+          readelf -d "$BIN" > /dev/null 2>&1 && echo "存在动态段（非纯静态）" || echo "无动态段，纯静态"
+          ls -lh "$BIN"
+
+      - name: Stage artifact
+        run: |
+          mkdir -p dist
+          cp target/armv7-unknown-linux-musleabihf/release/leaf dist/leaf-armv7-musl-static
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: leaf-armv7-musl-static
+          path: dist/leaf-armv7-musl-static
